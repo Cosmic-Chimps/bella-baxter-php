@@ -74,12 +74,34 @@ jobs:
         working-directory: packages/sdk
         run: composer validate --strict
 
-      - name: Notify Packagist — bella-baxter/sdk
+      - name: Register or update bella-baxter/sdk on Packagist
+        env:
+          PACKAGIST_AUTH: "${{ secrets.PACKAGIST_USERNAME }}:${{ secrets.PACKAGIST_MAIN_API_TOKEN }}"
         run: |
-          curl -sS -X POST \
-            -H "Content-Type: application/json" \
-            -d '{"repository":{"url":"https://github.com/${{ github.repository }}"}}' \
-            "https://packagist.org/api/update-package?username=${{ secrets.PACKAGIST_USERNAME }}&apiToken=${{ secrets.PACKAGIST_API_TOKEN }}"
+          PACKAGE="bella-baxter/sdk"
+          REPO_URL="https://github.com/${{ github.repository }}"
+
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://packagist.org/packages/${PACKAGE}.json")
+          if [ "$STATUS" = "404" ]; then
+            echo "Package $PACKAGE not found — creating..."
+            # Packagist reads root composer.json; copy sdk's before registering
+            cp packages/sdk/composer.json composer.json
+            RESPONSE=$(curl -sS -X POST \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer $PACKAGIST_AUTH" \
+              "https://packagist.org/api/create-package" \
+              -d "{\"repository\":\"$REPO_URL\"}")
+            rm composer.json
+          else
+            echo "Package $PACKAGE exists — updating..."
+            RESPONSE=$(curl -sS -X POST \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer $PACKAGIST_AUTH" \
+              "https://packagist.org/api/update-package" \
+              -d "{\"repository\":\"https://packagist.org/packages/$PACKAGE\"}")
+          fi
+          echo "$RESPONSE"
+          echo "$RESPONSE" | grep -q '"status":"success"' || (echo "::error::Packagist API call failed: $RESPONSE" && exit 1)
 
   publish-framework-packages:
     name: Publish bella-baxter/laravel + bella-baxter/symfony
@@ -110,12 +132,33 @@ jobs:
         working-directory: packages/${{ matrix.package }}
         run: composer validate --strict
 
-      - name: Notify Packagist — bella-baxter/${{ matrix.package }}
+      - name: Register or update bella-baxter/${{ matrix.package }} on Packagist
+        env:
+          PACKAGIST_AUTH: "${{ secrets.PACKAGIST_USERNAME }}:${{ secrets.PACKAGIST_MAIN_API_TOKEN }}"
         run: |
-          curl -sS -X POST \
-            -H "Content-Type: application/json" \
-            -d '{"repository":{"url":"https://github.com/${{ github.repository }}"}}' \
-            "https://packagist.org/api/update-package?username=${{ secrets.PACKAGIST_USERNAME }}&apiToken=${{ secrets.PACKAGIST_API_TOKEN }}"
+          PACKAGE="bella-baxter/${{ matrix.package }}"
+          REPO_URL="https://github.com/${{ github.repository }}"
+
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://packagist.org/packages/${PACKAGE}.json")
+          if [ "$STATUS" = "404" ]; then
+            echo "Package $PACKAGE not found — creating..."
+            cp packages/${{ matrix.package }}/composer.json composer.json
+            RESPONSE=$(curl -sS -X POST \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer $PACKAGIST_AUTH" \
+              "https://packagist.org/api/create-package" \
+              -d "{\"repository\":\"$REPO_URL\"}")
+            rm composer.json
+          else
+            echo "Package $PACKAGE exists — updating..."
+            RESPONSE=$(curl -sS -X POST \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer $PACKAGIST_AUTH" \
+              "https://packagist.org/api/update-package" \
+              -d "{\"repository\":\"https://packagist.org/packages/$PACKAGE\"}")
+          fi
+          echo "$RESPONSE"
+          echo "$RESPONSE" | grep -q '"status":"success"' || (echo "::error::Packagist API call failed: $RESPONSE" && exit 1)
 
   notify:
     runs-on: ubuntu-latest
