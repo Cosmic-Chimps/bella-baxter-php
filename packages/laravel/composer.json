@@ -1,0 +1,44 @@
+{
+    "name": "bella-baxter/laravel",
+    "description": "Laravel integration for the Bella Baxter secret management platform",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["secrets", "vault", "bella-baxter", "laravel", "secret-management"],
+    "homepage": "https://bella-baxter.io",
+    "support": {
+        "source": "https://github.com/cosmic-chimps/bella-baxter-php",
+        "issues": "https://github.com/cosmic-chimps/bella-baxter-php/issues",
+        "docs": "https://docs.bella-baxter.io"
+    },
+    "require": {
+        "php": "^8.1",
+        "bella-baxter/sdk": "*",
+        "illuminate/support": "^10.0 || ^11.0",
+        "illuminate/contracts": "^10.0 || ^11.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^8.0 || ^9.0",
+        "phpunit/phpunit": "^10.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "BellaBaxter\\Laravel\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "BellaBaxter\\Laravel\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "BellaBaxter\\Laravel\\BellaServiceProvider"
+            ],
+            "aliases": {
+                "Bella": "BellaBaxter\\Laravel\\Facades\\Bella"
+            }
+        }
+    },
+    "minimum-stability": "stable"
+}
