@@ -58,17 +58,15 @@ jobs:
             --clean-output \
             --log-level Warning
 
-      - name: Verify SDK version matches tag
+      - name: Verify VERSION file matches tag
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          # Composer uses beta instead of preview
-          EXPECTED_COMPOSER_VERSION=$(echo "$VERSION" | sed 's/-preview\./-beta./')
-          COMPOSER_VERSION=$(php -r "echo json_decode(file_get_contents('packages/sdk/composer.json'))->version ?? '';")
-          if [ "$COMPOSER_VERSION" != "$EXPECTED_COMPOSER_VERSION" ]; then
-            echo "::error::packages/sdk/composer.json has version $COMPOSER_VERSION but expected $EXPECTED_COMPOSER_VERSION — run release-sdk.yml first"
+          FILE_VERSION=$(cat VERSION 2>/dev/null || echo "")
+          if [ "$FILE_VERSION" != "$VERSION" ]; then
+            echo "::error::VERSION file has '$FILE_VERSION' but tag is '$VERSION' — run release-sdk.yml first"
             exit 1
           fi
-          echo "✓ packages/sdk/composer.json $COMPOSER_VERSION matches tag $VERSION"
+          echo "✓ VERSION file $FILE_VERSION matches tag $VERSION"
 
       - name: Validate sdk composer.json
         working-directory: packages/sdk
@@ -99,13 +97,12 @@ jobs:
       - name: Verify ${{ matrix.package }} version matches tag
         run: |
           VERSION="${{ needs.publish-sdk.outputs.version }}"
-          EXPECTED_COMPOSER_VERSION=$(echo "$VERSION" | sed 's/-preview\./-beta./')
-          COMPOSER_VERSION=$(php -r "echo json_decode(file_get_contents('packages/${{ matrix.package }}/composer.json'))->version ?? '';")
-          if [ "$COMPOSER_VERSION" != "$EXPECTED_COMPOSER_VERSION" ]; then
-            echo "::error::packages/${{ matrix.package }}/composer.json has version $COMPOSER_VERSION but expected $EXPECTED_COMPOSER_VERSION — run release-sdk.yml first"
+          FILE_VERSION=$(cat VERSION 2>/dev/null || echo "")
+          if [ "$FILE_VERSION" != "$VERSION" ]; then
+            echo "::error::VERSION file has '$FILE_VERSION' but tag is '$VERSION' — run release-sdk.yml first"
             exit 1
           fi
-          echo "✓ packages/${{ matrix.package }}/composer.json $COMPOSER_VERSION matches tag $VERSION"
+          echo "✓ VERSION file $FILE_VERSION matches tag $VERSION"
 
       - name: Validate ${{ matrix.package }} composer.json
         working-directory: packages/${{ matrix.package }}
