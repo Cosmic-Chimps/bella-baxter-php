@@ -1,0 +1,13 @@
+{
+    "name": "bella-sample/process-inject",
+    "description": "Bella Baxter: process inject sample — bella run -- php app.php",
+    "type": "project",
+    "license": "MIT",
+    "require": {
+        "php": "^8.1"
+    },
+    "scripts": {
+        "start": "bella run -p my-project -e production -- php app.php",
+        "dev": "bella run -p my-project -e development -- php app.php"
+    }
+}

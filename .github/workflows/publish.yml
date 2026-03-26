@@ -1,0 +1,129 @@
+name: Publish PHP SDK (Packagist)
+
+# Packagist auto-syncs from GitHub tag — this workflow generates the Kiota client,
+# bumps versions in all 3 composer.json files, and notifies Packagist.
+# Triggered by release-sdk.yml creating a tag on this repo.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish-sdk:
+    name: Publish bella-baxter/sdk
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: composer
+
+      - name: Install kiota
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.x'
+      - run: dotnet tool install --global Microsoft.OpenApi.Kiota --version 1.30.0
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Publishing PHP packages version $VERSION"
+
+      - name: Set production API URL
+        run: |
+          BELLA_BAXTER_API_URL="${{ vars.BELLA_BAXTER_API_URL || 'https://api.bella-baxter.io' }}"
+          if [ "$BELLA_BAXTER_API_URL" != "https://api.bella-baxter.io" ]; then
+            grep -rl 'https://api.bella-baxter.io' . --include='*.php' \
+              | xargs sed -i "s|https://api.bella-baxter.io|${BELLA_BAXTER_API_URL}|g"
+          fi
+
+      - name: Generate Kiota PHP client
+        run: |
+          kiota generate \
+            --language PHP \
+            --class-name BellaClient \
+            --namespace-name "BellaBaxter\\Generated" \
+            --openapi openapi.json \
+            --output packages/sdk/src/generated \
+            --exclude-backward-compatible \
+            --clean-output \
+            --log-level Warning
+
+      - name: Verify SDK version matches tag
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          COMPOSER_VERSION=$(php -r "echo json_decode(file_get_contents('packages/sdk/composer.json'))->version ?? '';")
+          if [ "$COMPOSER_VERSION" != "$VERSION" ]; then
+            echo "::error::packages/sdk/composer.json has version $COMPOSER_VERSION but tag is $VERSION — run release-sdk.yml first"
+            exit 1
+          fi
+          echo "✓ packages/sdk/composer.json $COMPOSER_VERSION matches tag $VERSION"
+
+      - name: Validate sdk composer.json
+        working-directory: packages/sdk
+        run: composer validate --strict
+
+      - name: Notify Packagist — bella-baxter/sdk
+        run: |
+          curl -sS -X POST \
+            -H "Content-Type: application/json" \
+            -d '{"repository":{"url":"https://github.com/${{ github.repository }}"}}' \
+            "https://packagist.org/api/update-package?username=${{ secrets.PACKAGIST_USERNAME }}&apiToken=${{ secrets.PACKAGIST_API_TOKEN }}"
+
+  publish-framework-packages:
+    name: Publish bella-baxter/laravel + bella-baxter/symfony
+    runs-on: ubuntu-latest
+    needs: publish-sdk
+    strategy:
+      matrix:
+        package: [laravel, symfony]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: composer
+
+      - name: Verify ${{ matrix.package }} version matches tag
+        run: |
+          VERSION="${{ needs.publish-sdk.outputs.version }}"
+          COMPOSER_VERSION=$(php -r "echo json_decode(file_get_contents('packages/${{ matrix.package }}/composer.json'))->version ?? '';")
+          if [ "$COMPOSER_VERSION" != "$VERSION" ]; then
+            echo "::error::packages/${{ matrix.package }}/composer.json has version $COMPOSER_VERSION but tag is $VERSION — run release-sdk.yml first"
+            exit 1
+          fi
+          echo "✓ packages/${{ matrix.package }}/composer.json $COMPOSER_VERSION matches tag $VERSION"
+
+      - name: Validate ${{ matrix.package }} composer.json
+        working-directory: packages/${{ matrix.package }}
+        run: composer validate --strict
+
+      - name: Notify Packagist — bella-baxter/${{ matrix.package }}
+        run: |
+          curl -sS -X POST \
+            -H "Content-Type: application/json" \
+            -d '{"repository":{"url":"https://github.com/${{ github.repository }}"}}' \
+            "https://packagist.org/api/update-package?username=${{ secrets.PACKAGIST_USERNAME }}&apiToken=${{ secrets.PACKAGIST_API_TOKEN }}"
+
+  notify:
+    runs-on: ubuntu-latest
+    needs: [publish-sdk, publish-framework-packages]
+    if: always()
+    steps:
+      - uses: slackapi/slack-github-action@v3.0.1
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: webhook-trigger
+          payload: |
+            text: "*SDK PHP (Packagist) publish ${{ github.ref_name }}*: sdk=${{ needs.publish-sdk.result }} frameworks=${{ needs.publish-framework-packages.result }}\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+

@@ -1,0 +1,7 @@
+bella:
+    url:         '%env(BELLA_BAXTER_URL)%'
+    client_id:   '%env(BELLA_API_KEY)%'
+    secret_key:  '%env(BELLA_SECRET_KEY)%'
+    project:     '%env(BELLA_PROJECT)%'
+    environment: '%env(BELLA_ENV)%'
+    e2ee:        '%env(bool:BELLA_E2EE)%'

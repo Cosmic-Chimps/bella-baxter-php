@@ -1,0 +1,14 @@
+controllers:
+    path: /
+    controller: App\Controller\SecretsController::index
+    methods: [GET]
+
+health:
+    path: /health
+    controller: App\Controller\SecretsController::health
+    methods: [GET]
+
+secrets_typed:
+    path: /typed
+    controller: App\Controller\SecretsController::typed
+    methods: [GET]

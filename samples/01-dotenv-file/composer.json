@@ -1,0 +1,19 @@
+{
+    "name": "bella-sample/dotenv-file",
+    "description": "Bella Baxter: .env file sample — any PHP framework",
+    "type": "project",
+    "license": "MIT",
+    "require": {
+        "php": "^8.1",
+        "vlucas/phpdotenv": "^5.6"
+    },
+    "scripts": {
+        "start": "bella secrets get -p my-project -e production -o .env && php app.php",
+        "dev": "bella secrets get -p my-project -e development -o .env && php app.php"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    }
+}
