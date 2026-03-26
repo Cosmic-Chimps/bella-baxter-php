@@ -15,7 +15,7 @@
     },
     {
       "type": "path",
-      "url": "../../packages/sdk"
+      "url": "../.."
     }
   ],
   "autoload": {

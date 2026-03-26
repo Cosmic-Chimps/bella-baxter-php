@@ -1,31 +1,31 @@
 {
-    "name": "bella-sample/symfony",
-    "description": "Bella Baxter: Symfony sample using bella-baxter/symfony bundle",
-    "type": "project",
-    "license": "MIT",
-    "require": {
-        "php": "^8.2",
-        "symfony/framework-bundle": "^7.0",
-        "symfony/http-kernel": "^7.0",
-        "symfony/routing": "^7.0",
-        "symfony/yaml": "^7.0",
-        "bella-baxter/symfony": "*"
+  "name": "bella-sample/symfony",
+  "description": "Bella Baxter: Symfony sample using bella-baxter/symfony bundle",
+  "type": "project",
+  "license": "MIT",
+  "require": {
+    "php": "^8.2",
+    "symfony/framework-bundle": "^7.0",
+    "symfony/http-kernel": "^7.0",
+    "symfony/routing": "^7.0",
+    "symfony/yaml": "^7.0",
+    "bella-baxter/symfony": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "App\\": "src/"
+    }
+  },
+  "repositories": [
+    {
+      "type": "path",
+      "url": "../../packages/symfony"
     },
-    "autoload": {
-        "psr-4": {
-            "App\\": "src/"
-        }
-    },
-    "repositories": [
-        {
-            "type": "path",
-            "url": "../../packages/symfony"
-        },
-        {
-            "type": "path",
-            "url": "../../packages/sdk"
-        }
-    ],
-    "minimum-stability": "dev",
-    "prefer-stable": true
+    {
+      "type": "path",
+      "url": "../.."
+    }
+  ],
+  "minimum-stability": "dev",
+  "prefer-stable": true
 }

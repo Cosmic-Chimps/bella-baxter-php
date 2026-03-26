@@ -1,7 +1,4 @@
-name: Publish PHP SDK (Packagist)
-
-# Generates the Kiota client, validates composer.json, and registers/updates
-# bella-baxter/sdk on Packagist. Triggered by release-sdk.yml creating a tag.
+name: Publish PHP Laravel SDK (Packagist)
 
 on:
   push:
@@ -10,7 +7,7 @@ on:
 
 jobs:
   publish:
-    name: Publish bella-baxter/sdk
+    name: Publish bella-baxter/laravel
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -20,12 +17,6 @@ jobs:
           php-version: '8.2'
           tools: composer
 
-      - name: Install kiota
-        uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: '10.x'
-      - run: dotnet tool install --global Microsoft.OpenApi.Kiota --version 1.30.0
-
       - name: Extract version from tag
         id: version
         run: |
@@ -33,27 +24,7 @@ jobs:
           # Tags use 'preview' but PHP uses 'beta' (Composer doesn't support 'preview')
           PHP_VERSION=$(echo "$TAG_VERSION" | sed 's/-preview\./-beta./')
           echo "version=$PHP_VERSION" >> "$GITHUB_OUTPUT"
-          echo "Publishing bella-baxter/sdk $PHP_VERSION (from tag $TAG_VERSION)"
-
-      - name: Set production API URL
-        run: |
-          BELLA_BAXTER_API_URL="${{ vars.BELLA_BAXTER_API_URL || 'https://api.bella-baxter.io' }}"
-          if [ "$BELLA_BAXTER_API_URL" != "https://api.bella-baxter.io" ]; then
-            grep -rl 'https://api.bella-baxter.io' . --include='*.php' \
-              | xargs sed -i "s|https://api.bella-baxter.io|${BELLA_BAXTER_API_URL}|g"
-          fi
-
-      - name: Generate Kiota PHP client
-        run: |
-          kiota generate \
-            --language PHP \
-            --class-name BellaClient \
-            --namespace-name "BellaBaxter\\Generated" \
-            --openapi openapi.json \
-            --output src/generated \
-            --exclude-backward-compatible \
-            --clean-output \
-            --log-level Warning
+          echo "Publishing bella-baxter/laravel $PHP_VERSION (from tag $TAG_VERSION)"
 
       - name: Verify VERSION file matches tag
         run: |
@@ -68,11 +39,11 @@ jobs:
       - name: Validate composer.json
         run: composer validate --strict
 
-      - name: Register or update bella-baxter/sdk on Packagist
+      - name: Register or update bella-baxter/laravel on Packagist
         env:
           PACKAGIST_AUTH: "${{ secrets.PACKAGIST_USERNAME }}:${{ secrets.PACKAGIST_MAIN_API_TOKEN }}"
         run: |
-          PACKAGE="bella-baxter/sdk"
+          PACKAGE="bella-baxter/laravel"
           REPO_URL="https://github.com/${{ github.repository }}"
 
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://packagist.org/packages/${PACKAGE}.json")
@@ -104,5 +75,4 @@ jobs:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
           webhook-type: webhook-trigger
           payload: |
-            text: "*SDK PHP (Packagist) publish ${{ github.ref_name }}*: ${{ needs.publish.result }}\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-
+            text: "*SDK PHP Laravel (Packagist) publish ${{ github.ref_name }}*: ${{ needs.publish.result }}\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
