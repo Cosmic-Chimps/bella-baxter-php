@@ -34,9 +34,11 @@ jobs:
       - name: Extract version from tag
         id: version
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Publishing PHP packages version $VERSION"
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          # Tags use 'preview' but PHP uses 'beta' (Composer doesn't support 'preview')
+          PHP_VERSION=$(echo "$TAG_VERSION" | sed 's/-preview\./-beta./')
+          echo "version=$PHP_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Publishing PHP packages version $PHP_VERSION (from tag $TAG_VERSION)"
 
       - name: Set production API URL
         run: |
