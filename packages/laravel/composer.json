@@ -3,7 +3,13 @@
     "description": "Laravel integration for the Bella Baxter secret management platform",
     "type": "library",
     "license": "MIT",
-    "keywords": ["secrets", "vault", "bella-baxter", "laravel", "secret-management"],
+    "keywords": [
+        "secrets",
+        "vault",
+        "bella-baxter",
+        "laravel",
+        "secret-management"
+    ],
     "homepage": "https://bella-baxter.io",
     "support": {
         "source": "https://github.com/cosmic-chimps/bella-baxter-php",
@@ -40,5 +46,6 @@
             }
         }
     },
-    "minimum-stability": "stable"
+    "minimum-stability": "stable",
+    "version": "0.1.1-preview.18"
 }
