@@ -3,14 +3,7 @@
     "description": "Symfony Bundle for the Bella Baxter secret management platform",
     "type": "symfony-bundle",
     "license": "MIT",
-    "keywords": [
-        "secrets",
-        "vault",
-        "bella-baxter",
-        "symfony",
-        "bundle",
-        "secret-management"
-    ],
+    "keywords": ["secrets", "vault", "bella-baxter", "symfony", "bundle", "secret-management"],
     "homepage": "https://bella-baxter.io",
     "support": {
         "source": "https://github.com/cosmic-chimps/bella-baxter-php",
@@ -38,6 +31,5 @@
             "BellaBaxter\\Symfony\\Tests\\": "tests/"
         }
     },
-    "minimum-stability": "stable",
-    "version": "0.1.1-beta.19"
+    "minimum-stability": "stable"
 }
