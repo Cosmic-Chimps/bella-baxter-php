@@ -25,6 +25,38 @@ final class E2EEncryption
 
     private readonly \OpenSSLAsymmetricKey $privateKey;
 
+    /**
+     * Create an E2EEncryption instance from a PKCS#8 PEM private key (ZKE persistent device key).
+     *
+     * Accepts both PKCS#8 (`-----BEGIN PRIVATE KEY-----`) and SEC1 (`-----BEGIN EC PRIVATE KEY-----`)
+     * formats — openssl_pkey_get_private() handles both transparently.
+     *
+     * @param  string $pem PEM-encoded EC private key (from `bella auth setup`).
+     * @throws \RuntimeException if the key cannot be parsed or is not a P-256 EC key.
+     */
+    public static function fromPem(string $pem): self
+    {
+        $privateKey = openssl_pkey_get_private($pem);
+        if ($privateKey === false) {
+            throw new \RuntimeException('ZKE: could not parse PEM private key: ' . openssl_error_string());
+        }
+
+        $details = openssl_pkey_get_details($privateKey);
+        if ($details === false || ($details['type'] ?? -1) !== OPENSSL_KEYTYPE_EC) {
+            throw new \RuntimeException('ZKE: private key must be an EC (P-256) key');
+        }
+
+        // Bypass the constructor to avoid generating a throw-away ephemeral key.
+        // Readonly properties are uninitialized at this point and can be assigned
+        // exactly once from within this class scope.
+        /** @var self $instance */
+        $instance = (new \ReflectionClass(self::class))->newInstanceWithoutConstructor();
+        $instance->privateKey      = $privateKey;
+        $instance->publicKeyBase64 = self::pemToDerBase64($details['key']); // SPKI DER base64
+
+        return $instance;
+    }
+
     public function __construct()
     {
         $key = openssl_pkey_new([

@@ -52,8 +52,18 @@ final class BaxterClient
 
         $auth = new HmacAuthProvider($options->apiKey);
 
+        // ZKE: use a persistent device key when one is configured (options or env var),
+        // otherwise fall back to a fresh ephemeral key (standard E2EE).
+        $privateKeyPem = $options->privateKey ?? (getenv('BELLA_BAXTER_PRIVATE_KEY') ?: null);
+        if ($privateKeyPem !== null) {
+            $e2ee       = E2EEncryption::fromPem($privateKeyPem);
+            $middleware = new E2EGuzzleMiddleware($e2ee, $options->onWrappedDekReceived);
+        } else {
+            $middleware = new E2EGuzzleMiddleware();
+        }
+
         $stack = HandlerStack::create();
-        $stack->push(new E2EGuzzleMiddleware());
+        $stack->push($middleware);
 
         $this->guzzle = new GuzzleClient([
             'base_uri' => $this->baseUrl,

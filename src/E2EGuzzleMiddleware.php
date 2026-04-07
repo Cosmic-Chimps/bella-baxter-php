@@ -14,14 +14,26 @@ use Psr\Http\Message\ResponseInterface;
  *
  * On outbound: adds X-E2E-Public-Key header so the server encrypts the response.
  * On inbound:  decrypts the encrypted payload and reconstructs a normal secrets response.
+ *              If an $onWrappedDekReceived callback is provided, it is invoked whenever
+ *              the server returns an X-Bella-Wrapped-Dek header (ZKE key-wrapping flow).
  */
 final class E2EGuzzleMiddleware
 {
     private readonly E2EEncryption $e2ee;
 
-    public function __construct()
+    /** @var callable|null */
+    private readonly mixed $onWrappedDekReceived;
+
+    /**
+     * @param E2EEncryption|null $e2ee                 Pre-loaded encryption instance (ZKE). Generates
+     *                                                  an ephemeral key when null (standard E2EE).
+     * @param callable|null      $onWrappedDekReceived  Invoked with (string $wrappedDek, ?string $leaseExpires)
+     *                                                  when the server returns X-Bella-Wrapped-Dek.
+     */
+    public function __construct(?E2EEncryption $e2ee = null, ?callable $onWrappedDekReceived = null)
     {
-        $this->e2ee = new E2EEncryption();
+        $this->e2ee                 = $e2ee ?? new E2EEncryption();
+        $this->onWrappedDekReceived = $onWrappedDekReceived;
     }
 
     public function __invoke(callable $handler): callable
@@ -55,7 +67,19 @@ final class E2EGuzzleMiddleware
                             JSON_THROW_ON_ERROR,
                         );
                     }
-                    return $response->withBody(Utils::streamFor($newBody));
+
+                    $response = $response->withBody(Utils::streamFor($newBody));
+
+                    // ZKE: notify caller when the server wraps a DEK for the persistent device key.
+                    if ($this->onWrappedDekReceived !== null) {
+                        $wrappedDek = $response->getHeaderLine('X-Bella-Wrapped-Dek');
+                        if ($wrappedDek !== '') {
+                            $leaseExpires = $response->getHeaderLine('X-Bella-Lease-Expires') ?: null;
+                            ($this->onWrappedDekReceived)($wrappedDek, $leaseExpires);
+                        }
+                    }
+
+                    return $response;
                 }
             );
         };

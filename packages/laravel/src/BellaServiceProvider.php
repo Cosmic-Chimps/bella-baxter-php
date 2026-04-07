@@ -27,8 +27,9 @@ class BellaServiceProvider extends ServiceProvider
 
         $this->app->singleton(BaxterClient::class, function () {
             return new BaxterClient(new BaxterClientOptions(
-                baxterUrl: config('bella.url', env('BELLA_BAXTER_URL', 'http://localhost:5522')),
-                apiKey:    config('bella.api_key', env('BELLA_BAXTER_API_KEY', '')),
+                baxterUrl:  config('bella.url', env('BELLA_BAXTER_URL', 'http://localhost:5522')),
+                apiKey:     config('bella.api_key', env('BELLA_BAXTER_API_KEY', '')),
+                privateKey: config('bella.private_key') ?: null,
             ));
         });
     }
