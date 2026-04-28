@@ -18,7 +18,7 @@
     },
     "require": {
         "php": "^8.1",
-        "bella-baxter/sdk": "0.1.1-beta.77",
+        "bella-baxter/sdk": "0.1.1-beta.78",
         "illuminate/support": "^10.0 || ^11.0",
         "illuminate/contracts": "^10.0 || ^11.0"
     },
