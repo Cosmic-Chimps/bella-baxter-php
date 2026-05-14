@@ -19,7 +19,7 @@
     },
     "require": {
         "php": "^8.1",
-        "bella-baxter/sdk": "0.1.1-beta.86",
+        "bella-baxter/sdk": "0.1.1-beta.87",
         "symfony/http-kernel": "^6.0 || ^7.0",
         "symfony/dependency-injection": "^6.0 || ^7.0",
         "symfony/config": "^6.0 || ^7.0"
