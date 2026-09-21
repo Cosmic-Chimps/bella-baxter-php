@@ -5,7 +5,7 @@ use App\Kernel;
 require_once dirname(__DIR__).'/vendor/autoload.php';
 
 // Load .env for local config (APP_ENV, APP_SECRET, etc.)
-// Process-level env vars injected by bella exec take precedence and are NOT overridden.
+// Process-level env vars injected by bella sdk run take precedence and are NOT overridden.
 $envFile = dirname(__DIR__) . '/.env';
 if (is_file($envFile)) {
     foreach (file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {

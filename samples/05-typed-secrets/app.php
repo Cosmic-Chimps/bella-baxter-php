@@ -5,7 +5,7 @@
 // It contains typed accessors — no raw getenv() calls in your app code.
 //
 // Run with:
-//   bella exec --app php-05-typed-secrets -- php app.php
+//   bella sdk run --app php-05-typed-secrets -- php app.php
 
 declare(strict_types=1);
 

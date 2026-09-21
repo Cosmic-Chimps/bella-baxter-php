@@ -13,7 +13,7 @@ This is a **complete, runnable Laravel 11** sample project. Clone it, install de
 composer install
 
 # 2. Start the server with secrets injected
-bella exec -- php artisan serve --port=8097
+bella sdk run -- php artisan serve --port=8097
 
 # 3. Test the endpoints
 curl http://localhost:8097/
@@ -36,13 +36,13 @@ curl http://localhost:8097/health
 ## How it works
 
 **Boot sequence:**
-1. `bella exec` injects `BELLA_BAXTER_API_KEY` + `BELLA_BAXTER_URL` into the process environment
+1. `bella sdk run` injects `BELLA_BAXTER_API_KEY` + `BELLA_BAXTER_URL` into the process environment
 2. Laravel boots → `BellaBaxterServiceProvider::register()` binds `BaxterClient` singleton
 3. `BellaBaxterServiceProvider::boot()` calls `BaxterClient::getAllSecrets()`
 4. Each secret is written to `$_ENV` and `putenv()` — available via `env()` everywhere
 5. Controllers serve secrets from env vars
 
-**Required env vars (provided by `bella exec`):**
+**Required env vars (provided by `bella sdk run`):**
 ```dotenv
 BELLA_BAXTER_API_KEY=bax-xxxxxxxxxxxxxxxxxxxx
 BELLA_BAXTER_URL=http://localhost:5522
@@ -69,4 +69,4 @@ bella secrets generate php --app php-03-laravel -o app/Bella/BellaAppSecrets.php
    ```php
    return [App\Providers\BellaBaxterServiceProvider::class];
    ```
-4. Run with `bella exec --app <your-app> -- php artisan serve`
+4. Run with `bella sdk run --app <your-app> -- php artisan serve`

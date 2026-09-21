@@ -7,8 +7,8 @@
 # Samples tested:
 #   01-dotenv-file    — bella secrets get -o .env → php app.php
 #   02-process-inject — bella run -- php app.php
-#   03-laravel        — bella exec → php artisan serve (HTTP server, port 8097)
-#   04-symfony        — bella exec → php -S localhost:8096 (HTTP server, port 8096)
+#   03-laravel        — bella sdk run → php artisan serve (HTTP server, port 8097)
+#   04-symfony        — bella sdk run → php -S localhost:8096 (HTTP server, port 8096)
 #   05-typed-secrets  — bella run -- php app.php (typed AppSecrets class)
 
 set -uo pipefail
@@ -202,7 +202,7 @@ pushd "$SAMPLE_03" > /dev/null
   # Clear compiled caches from previous runs
   rm -rf bootstrap/cache/*.php
 
-  bella exec --app php-03-laravel -- php artisan serve --port=$LARAVEL_PORT --no-ansi \
+  bella sdk run --app php-03-laravel -- php artisan serve --port=$LARAVEL_PORT --no-ansi \
     > /tmp/bella-laravel.log 2>&1 &
   LARAVEL_PID=$!
   
@@ -234,7 +234,7 @@ pushd "$SAMPLE_04" > /dev/null
   # Clear Symfony container cache from previous runs
   rm -rf var/cache/*
 
-  bella exec --app php-04-symfony -- php -S "localhost:$SYMFONY_PORT" public/index.php \
+  bella sdk run --app php-04-symfony -- php -S "localhost:$SYMFONY_PORT" public/index.php \
     > /tmp/bella-symfony.log 2>&1 &
   SYMFONY_PID=$!
   

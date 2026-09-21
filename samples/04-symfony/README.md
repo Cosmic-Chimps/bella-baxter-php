@@ -13,7 +13,7 @@ This is a **complete, runnable Symfony 7** sample project. Clone it, install dep
 composer install
 
 # 2. Start the server with secrets injected
-bella exec -- php -S localhost:8096 public/index.php
+bella sdk run -- php -S localhost:8096 public/index.php
 
 # 3. Test the endpoints
 curl http://localhost:8096/
@@ -36,13 +36,13 @@ curl http://localhost:8096/health
 ## How it works
 
 **On each request (PHP built-in server):**
-1. `bella exec` injects `BELLA_BAXTER_API_KEY` + `BELLA_BAXTER_URL` into the process environment
+1. `bella sdk run` injects `BELLA_BAXTER_API_KEY` + `BELLA_BAXTER_URL` into the process environment
 2. `BellaSecretsLoader::onKernelRequest()` fires at priority 256 (before controllers)
 3. `BaxterClient::getAllSecrets()` fetches all secrets
 4. Each secret is written to `$_ENV`, `$_SERVER`, and `putenv()`
 5. Controller reads secrets via `getenv()`
 
-**Required env vars (provided by `bella exec`):**
+**Required env vars (provided by `bella sdk run`):**
 ```dotenv
 BELLA_BAXTER_API_KEY=bax-xxxxxxxxxxxxxxxxxxxx
 BELLA_BAXTER_URL=http://localhost:5522
@@ -79,4 +79,4 @@ bella secrets generate php --app php-04-symfony -o src/Bella/BellaAppSecrets.php
    App\Bella\BellaSecretsLoader:
      tags: [kernel.event_subscriber]
    ```
-4. Run with `bella exec --app <your-app> -- php -S localhost:8080 public/index.php`
+4. Run with `bella sdk run --app <your-app> -- php -S localhost:8080 public/index.php`

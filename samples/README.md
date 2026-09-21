@@ -34,7 +34,7 @@ Do you want zero PHP SDK code?
 
 ```bash
 # Authenticate
-bella login --api-key bax-xxxxxxxxxxxxxxxxxxxx
+bella login
 
 # Set your Bella Baxter instance URL
 export BELLA_BAXTER_URL=http://localhost:5522
@@ -48,8 +48,8 @@ export BELLA_BAXTER_URL=http://localhost:5522
 |--------|---------|
 | 01 | `bella secrets get --app php-01-dotenv-file -o .env` |
 | 02 | `bella run --app php-02-process-inject -- php app.php` |
-| 03 | `bella exec --app php-03-laravel -- php artisan serve --port=8097` |
-| 04 | `bella exec --app php-04-symfony -- php -S localhost:8096 public/index.php` |
+| 03 | `bella sdk run --app php-03-laravel -- php artisan serve --port=8097` |
+| 04 | `bella sdk run --app php-04-symfony -- php -S localhost:8096 public/index.php` |
 | 05 | `bella run --app php-05-typed-secrets -- php app.php` |
 
 ---

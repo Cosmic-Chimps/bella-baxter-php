@@ -21,7 +21,7 @@ bella run -- php app.php
 
 ```bash
 # Authenticate with API key
-bella login --api-key bax-xxxxxxxxxxxxxxxxxxxx
+bella login
 
 export BELLA_BAXTER_URL=http://localhost:5522   # your Bella Baxter instance
 
