@@ -26,6 +26,19 @@ final class E2EEncryption
     private readonly \OpenSSLAsymmetricKey $privateKey;
 
     /**
+     * The device key a client should use: `$explicit`, else `BELLA_BAXTER_PRIVATE_KEY`.
+     *
+     * A blank value (empty or whitespace, from either source) means "no device key", as in every
+     * other SDK. Anything else is returned as-is and must then load as a P-256 key (`fromPem`), or
+     * construction fails loudly.
+     */
+    public static function resolveDeviceKey(?string $explicit): ?string
+    {
+        $clean = static fn ($v): ?string => (is_string($v) && trim($v) !== '') ? $v : null;
+        return $clean($explicit) ?? $clean(getenv('BELLA_BAXTER_PRIVATE_KEY'));
+    }
+
+    /**
      * Create an E2EEncryption instance from a PKCS#8 PEM private key (ZKE persistent device key).
      *
      * Accepts both PKCS#8 (`-----BEGIN PRIVATE KEY-----`) and SEC1 (`-----BEGIN EC PRIVATE KEY-----`)
@@ -44,6 +57,12 @@ final class E2EEncryption
         $details = openssl_pkey_get_details($privateKey);
         if ($details === false || ($details['type'] ?? -1) !== OPENSSL_KEYTYPE_EC) {
             throw new \RuntimeException('ZKE: private key must be an EC (P-256) key');
+        }
+        // The platform's ECIES is P-256 only. Any other curve used to load here and then fail on the
+        // server with an unclear error; refuse it where the cause is still visible.
+        $curve = $details['ec']['curve_name'] ?? null;
+        if ($curve !== 'prime256v1') {
+            throw new \RuntimeException('ZKE: private key must be a P-256 (prime256v1) key, not ' . ($curve ?? 'an unnamed curve'));
         }
 
         // Bypass the constructor to avoid generating a throw-away ephemeral key.

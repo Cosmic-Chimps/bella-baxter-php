@@ -1,3 +1,6 @@
 # Kiota-generated client — regenerate with: kiota update -o src/generated/
 # or run apps/sdk/generate.sh from repo root
 src/generated/
+
+# A library does not commit its lock file; apps/sdk/contract-tests/run.sh runs `composer install` here.
+composer.lock

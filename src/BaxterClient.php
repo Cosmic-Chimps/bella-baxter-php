@@ -54,7 +54,7 @@ final class BaxterClient
 
         // ZKE: use a persistent device key when one is configured (options or env var),
         // otherwise fall back to a fresh ephemeral key (standard E2EE).
-        $privateKeyPem = $options->privateKey ?? (getenv('BELLA_BAXTER_PRIVATE_KEY') ?: null);
+        $privateKeyPem = E2EEncryption::resolveDeviceKey($options->privateKey);
         if ($privateKeyPem !== null) {
             $e2ee       = E2EEncryption::fromPem($privateKeyPem);
             $middleware = new E2EGuzzleMiddleware($e2ee, $options->onWrappedDekReceived);
