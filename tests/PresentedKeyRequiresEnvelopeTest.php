@@ -55,7 +55,7 @@ final class PresentedKeyRequiresEnvelopeTest extends TestCase
     }
 
     /** The server side of the contract (EciesAlgorithm.Encrypt / stub encryptFor), in PHP. */
-    private static function encryptFor(string $clientSpkiB64, string $plaintext): array
+    public static function encryptFor(string $clientSpkiB64, string $plaintext): array
     {
         $clientPem = "-----BEGIN PUBLIC KEY-----\n" . chunk_split($clientSpkiB64, 64, "\n") . "-----END PUBLIC KEY-----\n";
         $clientKey = openssl_pkey_get_public($clientPem);

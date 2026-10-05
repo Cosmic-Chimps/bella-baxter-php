@@ -6,8 +6,8 @@ namespace BellaBaxter;
 
 use Microsoft\Kiota\Abstractions\Authentication\AuthenticationProvider;
 use Microsoft\Kiota\Abstractions\RequestInformation;
-use GuzzleHttp\Promise\Create;
-use React\Promise\PromiseInterface;
+use Http\Promise\FulfilledPromise;
+use Http\Promise\Promise;
 
 /**
  * Kiota AuthenticationProvider that signs every request with HMAC-SHA256.
@@ -34,7 +34,7 @@ final class HmacAuthProvider implements AuthenticationProvider
         $this->appClient     = $appClient ?? getenv('BELLA_BAXTER_APP_CLIENT') ?: null;
     }
 
-    public function authenticateRequest(RequestInformation $request, array $additionalAuthenticationContext = []): \Http\Promise\Promise
+    public function authenticateRequest(RequestInformation $request, array $additionalAuthenticationContext = []): Promise
     {
         $uri       = $request->getUri();
         $path      = parse_url($uri, PHP_URL_PATH) ?? '/';
@@ -43,22 +43,25 @@ final class HmacAuthProvider implements AuthenticationProvider
         $method    = strtoupper((string) $request->httpMethod);
         $body      = '';
         if ($request->content !== null) {
-            $body = is_string($request->content) ? $request->content : (string) stream_get_contents($request->content);
+            $body = (string) $request->content; // a PSR-7 stream: __toString() rewinds and reads it
         }
         $timestamp    = gmdate('Y-m-d\TH:i:s\Z');
         $bodyHash     = hash('sha256', $body);
         $stringToSign = "{$method}\n{$path}\n{$query}\n{$timestamp}\n{$bodyHash}";
         $signature    = hash_hmac('sha256', $stringToSign, hex2bin($this->signingSecret));
 
-        $request->headers->add('X-Bella-Key-Id',    $this->keyId);
-        $request->headers->add('X-Bella-Timestamp', $timestamp);
-        $request->headers->add('X-Bella-Signature', $signature);
-        $request->headers->add('X-Bella-Client',    $this->bellaClient);
+        // RequestInformation::$headers is private: through the accessor, or every call made with the Kiota
+        // client (getClient(), getSecretsVersion()) dies with "Cannot access private property" (#1162).
+        $request->addHeader('X-Bella-Key-Id',    $this->keyId);
+        $request->addHeader('X-Bella-Timestamp', $timestamp);
+        $request->addHeader('X-Bella-Signature', $signature);
+        $request->addHeader('X-Bella-Client',    $this->bellaClient);
         if ($this->appClient !== null) {
-            $request->headers->add('X-App-Client', $this->appClient);
+            $request->addHeader('X-App-Client', $this->appClient);
         }
 
-        return Create::promiseFor(null);
+        // The interface's own promise type: a Guzzle promise here was a TypeError on every Kiota call (#1162).
+        return new FulfilledPromise(null);
     }
 
     private function sortedQuery(string $raw): string

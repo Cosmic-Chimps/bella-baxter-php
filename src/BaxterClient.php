@@ -32,6 +32,7 @@ use BellaBaxter\Generated\BellaClient as KiotaBellaClient;
 final class BaxterClient
 {
     private readonly KiotaBellaClient $kiota;
+    private readonly GuzzleRequestAdapter $adapter;
     private readonly GuzzleClient $guzzle;
     private readonly string $baseUrl;
     private readonly string $keyId;
@@ -75,10 +76,10 @@ final class BaxterClient
             ],
         ]);
 
-        $adapter = new GuzzleRequestAdapter($auth, null, null, $this->guzzle);
-        $adapter->setBaseUrl($this->baseUrl);
+        $this->adapter = new GuzzleRequestAdapter($auth, null, null, $this->guzzle);
+        $this->adapter->setBaseUrl($this->baseUrl);
 
-        $this->kiota = new KiotaBellaClient($adapter);
+        $this->kiota = new KiotaBellaClient($this->adapter);
     }
 
     // ── Public API ────────────────────────────────────────────────────────────
@@ -155,7 +156,7 @@ final class BaxterClient
     public function getSecretsVersion(): array
     {
         $ctx = $this->getContext();
-        $resp = $this->kiota->api()->v1()->projects()->byProjectRef($ctx['projectSlug'])
+        $resp = $this->kiota->api()->v1()->projects()->byId($ctx['projectSlug'])
             ->environments()->byEnvSlug($ctx['environmentSlug'])->secrets()->version()->get();
 
         return [
@@ -171,13 +172,33 @@ final class BaxterClient
      *
      * Example:
      * ```php
-     * $client->getClient()->api()->v1()->projects()->byProjectRef('my-app')
+     * $client->getClient()->api()->v1()->projects()->byId('my-app')
      *     ->environments()->byEnvSlug('prod')->totp()->get();
      * ```
      */
     public function getClient(): KiotaBellaClient
     {
         return $this->kiota;
+    }
+
+    /**
+     * The request adapter behind {@see getClient()} — HMAC signing, E2EE and all. Use it to send a request
+     * built with a generated builder's `toGetRequestInformation()` and read the RAW body:
+     *
+     * ```php
+     * $info = $client->getClient()->api()->v1()->projects()->byId('my-app')
+     *     ->environments()->byEnvSlug('prod')->providers()->byProviderSlug('vault')
+     *     ->secrets()->byKey('DATABASE_URL')->toGetRequestInformation();
+     * $item = json_decode((string) $client->getRequestAdapter()
+     *     ->sendPrimitiveAsync($info, StreamInterface::class)->wait(), true);
+     * ```
+     *
+     * Five of the seven value-carrying reads are declared as `E2EEncryptedPayload` in the OpenAPI document,
+     * so their typed `get()` cannot describe the decrypted answer; the raw body here is that answer (#1162).
+     */
+    public function getRequestAdapter(): GuzzleRequestAdapter
+    {
+        return $this->adapter;
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────

@@ -20,7 +20,9 @@ final class BaxterClientOptions
      */
     public function __construct(
         public readonly string $baxterUrl            = 'https://api.bella-baxter.io',
-        public readonly string $apiKey,
+        // Defaulted only so that $baxterUrl's default is real: an optional parameter before a required one is
+        // implicitly required (and a deprecation since PHP 8.1). An absent key is still refused, by BaxterClient.
+        public readonly string $apiKey                = '',
         public readonly int    $timeoutSeconds        = 10,
         public readonly ?string $privateKey           = null,
         /** @var callable|null */

@@ -10,10 +10,14 @@ use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 
 /**
- * Guzzle middleware that transparently adds E2EE to GET /secrets requests.
+ * Guzzle middleware that transparently adds E2EE to the reads that carry secret values.
  *
- * On outbound: adds X-E2E-Public-Key header so the server encrypts the response.
- * On inbound:  decrypts the encrypted payload and reconstructs a normal secrets response.
+ * On outbound: adds X-E2E-Public-Key to EVERY envelope-required read ({@see requiresEnvelope()}) — the
+ *              seven GETs of apps/sdk/SDK_CONTRACT.md, whichever call issued them — and to nothing else
+ *              (#1162, "Rule: the key is presented on every envelope-required read").
+ * On inbound:  decrypts the envelope and hands the plaintext on UNCHANGED — the JSON the server sends
+ *              without a key (an AllEnvironmentSecretsResponse, a {key: value} export, an array of secret
+ *              items, one item, …), so the caller sees the read's real shape.
  *              If an $onWrappedDekReceived callback is provided, it is invoked whenever
  *              the server returns an X-Bella-Wrapped-Dek header (ZKE key-wrapping flow).
  *
@@ -85,30 +89,23 @@ final class E2EGuzzleMiddleware
     public function __invoke(callable $handler): callable
     {
         return function (RequestInterface $request, array $options) use ($handler): PromiseInterface {
-            $path         = $request->getUri()->getPath();
-            $isSecretsGet = str_ends_with($path, '/secrets') && strtoupper($request->getMethod()) === 'GET';
+            $path = $request->getUri()->getPath();
 
-            // The key is presented on exactly these requests; the envelope rule only binds where it was.
-            if ($isSecretsGet) {
+            // #1162 — the key is presented on exactly the envelope-required reads, so every read that
+            // carries secret values is end-to-end encrypted and the #1050 rule binds on each of them.
+            $presented = self::requiresEnvelope($request->getMethod(), $path);
+            if ($presented) {
                 $request = $request->withHeader('X-E2E-Public-Key', $this->e2ee->publicKeyBase64);
             }
-            $required = $isSecretsGet && self::requiresEnvelope($request->getMethod(), $path);
 
             return $handler($request, $options)->then(
-                function (ResponseInterface $response) use ($isSecretsGet, $required, $path): ResponseInterface {
-                    if (!$isSecretsGet || $response->getStatusCode() < 200 || $response->getStatusCode() >= 300) {
+                function (ResponseInterface $response) use ($presented, $path): ResponseInterface {
+                    if (!$presented || $response->getStatusCode() < 200 || $response->getStatusCode() >= 300) {
                         return $response;
-                    }
-                    $body = (string) $response->getBody();
-
-                    // A presented key on a path that does not carry values: decrypt an envelope if one came
-                    // back, otherwise the plain answer is the legitimate one.
-                    if (!$required && E2EEncryption::envelopeOf($body) === null) {
-                        return $response->withBody(Utils::streamFor($body));
                     }
 
                     // Throws E2EEResponseException — plaintext or an envelope that does not decrypt is refused.
-                    $plainJson = $this->e2ee->decryptRaw($body, $path);
+                    $plainJson = $this->e2ee->decryptRaw((string) $response->getBody(), $path);
                     try {
                         $parsed = json_decode($plainJson, true, 512, JSON_THROW_ON_ERROR);
                     } catch (\JsonException $e) {
@@ -118,19 +115,10 @@ final class E2EGuzzleMiddleware
                         throw E2EEResponseException::decryptionFailed($path);
                     }
 
-                    // If the server sent a full AllEnvironmentSecretsResponse, pass it through directly
-                    // so that environmentSlug, version, lastModified etc. are preserved.
-                    if (isset($parsed['secrets']) && is_array($parsed['secrets'])) {
-                        $newBody = $plainJson;
-                    } else {
-                        // Legacy format — synthesise a response wrapper.
-                        $newBody = json_encode(
-                            ['secrets' => E2EEncryption::secretsFromPlaintext($parsed), 'version' => 0, 'environmentSlug' => '', 'environmentName' => '', 'lastModified' => ''],
-                            JSON_THROW_ON_ERROR,
-                        );
-                    }
-
-                    $response = $response->withBody(Utils::streamFor($newBody));
+                    // The plaintext is the server's own JSON for this read and is handed on as is (#1162).
+                    // The old "legacy" {secrets: …} synthesis turned a getSecret item or a listSecrets array
+                    // into a different document that merely decrypted correctly.
+                    $response = $response->withBody(Utils::streamFor($plainJson));
 
                     // ZKE: notify caller when the server wraps a DEK for the persistent device key.
                     if ($this->onWrappedDekReceived !== null) {

@@ -20,25 +20,28 @@ use BellaBaxter\BaxterClient;
 use BellaBaxter\BaxterClientOptions;
 
 $client = new BaxterClient(new BaxterClientOptions(
-    baxterUrl:       'https://baxter.example.com',
-    clientId:        'bella_ak_abc123',       // from: bella apikeys create
-    clientSecret:    'your-secret-here',
-    environmentSlug: 'production',
-    enableE2ee:      true,                    // end-to-end encryption
+    baxterUrl: 'https://baxter.example.com',
+    apiKey:    getenv('BELLA_BAXTER_API_KEY'), // bax-<keyId>-<secret>, from: bella apikeys create
 ));
 
+// Project and environment come from the API key itself (GET /api/v1/keys/me).
 $secrets = $client->getAllSecrets();
 echo $secrets['DATABASE_URL'];
 ```
 
 ## End-to-End Encryption (E2EE)
 
-When `enableE2ee: true` is set:
+E2EE is **always on** — there is no option to enable or disable it. Every client installs
+`E2EGuzzleMiddleware`, which:
 
-1. The SDK generates a P-256 ECDH key pair on startup
-2. The public key is sent as `X-E2E-Public-Key` header with every request
+1. Uses your device key (`privateKey`, or `BELLA_BAXTER_PRIVATE_KEY`, both from `bella auth setup`) or,
+   when none is configured, a fresh ephemeral P-256 key pair
+2. Sends its public key as the `X-E2E-Public-Key` header on **every read that carries secret values** — the
+   seven envelope-required reads of the SDK contract (all secrets, both exports, the provider list, one
+   secret, one secret version, the global list), whether issued by `getAllSecrets()` or the Kiota client —
+   and on nothing else
 3. The server encrypts the response using **ECDH-P256 + HKDF-SHA256 + AES-256-GCM**
-4. The SDK decrypts the response transparently
+4. The SDK decrypts the response transparently and hands on the server's own JSON for that read
 
 Secret values are **never visible in plaintext** — not in server logs, proxies, or network captures.
 
@@ -49,71 +52,109 @@ regression) and `e2ee-decryption-failed` for an envelope that is malformed, tamp
 another key. There is no plaintext fallback.
 
 ```php
-// E2EE is opt-in — disabled by default
-$clientWithE2ee = new BaxterClient(new BaxterClientOptions(
-    // ...
-    enableE2ee: true,
+use BellaBaxter\BaxterClient;
+use BellaBaxter\BaxterClientOptions;
+use BellaBaxter\E2EEResponseException;
+
+// ZKE: present a registered device key instead of an ephemeral one.
+$client = new BaxterClient(new BaxterClientOptions(
+    apiKey:     getenv('BELLA_BAXTER_API_KEY'),
+    privateKey: getenv('BELLA_BAXTER_PRIVATE_KEY') ?: null, // PKCS#8 PEM; this env var is also read automatically
+    onWrappedDekReceived: function (string $wrappedDek, ?string $leaseExpires): void {
+        // ZKE key wrapping: persist the wrapped DEK for offline use
+    },
 ));
+
+try {
+    $secrets = $client->getAllSecrets();
+} catch (E2EEResponseException $e) {
+    error_log('refused: ' . $e->getErrorCode()); // never the body or any key
+    throw $e;
+}
 ```
 
 ## API
 
 ### `getAllSecrets(): array<string,string>`
 
-Fetches all secrets for the configured environment.
+Fetches all secrets for the project + environment the API key is scoped to.
 
 ```php
 $secrets = $client->getAllSecrets();
 // ['DATABASE_URL' => 'postgres://...', 'API_KEY' => '...']
 ```
 
-### `getSecret(string $key): string`
+### `getSecretsVersion(): array`
 
-Fetches all secrets and returns a single value by key. Throws `\RuntimeException` if not found.
+Lightweight change check — returns `environmentSlug`, `version` and `lastModified`, no values.
 
 ```php
-$dbUrl = $client->getSecret('DATABASE_URL');
+$version = $client->getSecretsVersion();
+if ($version['version'] !== $lastSeenVersion) {
+    $secrets = $client->getAllSecrets();
+}
 ```
 
-### `getSecretsVersion(int $version): array<string,string>`
+### `getKeyContext(): array`
 
-Fetches secrets at a specific version snapshot.
+The project and environment the API key is scoped to (`GET /api/v1/keys/me`).
 
 ```php
-$secrets = $client->getSecretsVersion(42);
+$ctx = $client->getKeyContext();
+echo $ctx['projectSlug'] . '/' . $ctx['environmentSlug'];
+```
+
+### `getClient()` and `getRequestAdapter()` — the full API
+
+`getClient()` is the Kiota-generated client for every other endpoint; its requests go through the same
+signing and E2EE middleware. Five of the seven value-carrying reads are declared as `E2EEncryptedPayload` in
+the OpenAPI document, which is not the shape they decrypt to, so read those through `getRequestAdapter()`
+as a raw body:
+
+```php
+use Psr\Http\Message\StreamInterface;
+
+$info = $client->getClient()->api()->v1()->projects()->byId('my-app')
+    ->environments()->byEnvSlug('production')->providers()->byProviderSlug('vault')
+    ->secrets()->byKey('DATABASE_URL')->toGetRequestInformation();
+
+$item = json_decode(
+    (string) $client->getRequestAdapter()->sendPrimitiveAsync($info, StreamInterface::class)->wait(),
+    true,
+);
+echo $item['value'];
 ```
 
 ## Configuration
 
+`BaxterClientOptions` constructor arguments (use named arguments):
+
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `baxterUrl` | `string` | — | Base URL of the Baxter API |
-| `clientId` | `string` | — | API key client ID |
-| `clientSecret` | `string` | — | API key client secret |
-| `environmentSlug` | `string` | — | Environment slug (e.g. `production`) |
-| `enableE2ee` | `bool` | `false` | Enable end-to-end encryption |
+| `baxterUrl` | `string` | `https://api.bella-baxter.io` | Base URL of the Baxter API |
+| `apiKey` | `string` | — (required) | Bella Baxter API key, `bax-<keyId>-<secret>` |
 | `timeoutSeconds` | `int` | `10` | HTTP request timeout |
+| `privateKey` | `?string` | `null` | PKCS#8 PEM device key (ZKE); falls back to `BELLA_BAXTER_PRIVATE_KEY` |
+| `onWrappedDekReceived` | `?callable` | `null` | `(string $wrappedDek, ?string $leaseExpires): void`, called on `X-Bella-Wrapped-Dek` |
 
 ## Laravel Integration
 
 ```php
 // config/services.php
-'bella' => [
-    'url'         => env('BAXTER_URL'),
-    'client_id'   => env('BAXTER_CLIENT_ID'),
-    'client_secret' => env('BAXTER_CLIENT_SECRET'),
-    'environment' => env('BAXTER_ENVIRONMENT', 'production'),
-    'e2ee'        => env('BAXTER_E2EE', true),
-],
+return [
+    'bella' => [
+        'url'     => env('BELLA_BAXTER_URL', 'https://api.bella-baxter.io'),
+        'api_key' => env('BELLA_BAXTER_API_KEY'),
+    ],
+];
+```
 
+```php
 // AppServiceProvider::register()
 $this->app->singleton(BaxterClient::class, function () {
     return new BaxterClient(new BaxterClientOptions(
-        baxterUrl:       config('services.bella.url'),
-        clientId:        config('services.bella.client_id'),
-        clientSecret:    config('services.bella.client_secret'),
-        environmentSlug: config('services.bella.environment'),
-        enableE2ee:      (bool) config('services.bella.e2ee'),
+        baxterUrl: config('services.bella.url'),
+        apiKey:    config('services.bella.api_key'),
     ));
 });
 ```
@@ -124,11 +165,8 @@ $this->app->singleton(BaxterClient::class, function () {
 # config/services.yaml
 BellaBaxter\BaxterClientOptions:
     arguments:
-        $baxterUrl:       '%env(BAXTER_URL)%'
-        $clientId:        '%env(BAXTER_CLIENT_ID)%'
-        $clientSecret:    '%env(BAXTER_CLIENT_SECRET)%'
-        $environmentSlug: '%env(BAXTER_ENVIRONMENT)%'
-        $enableE2ee:      true
+        $baxterUrl: '%env(BELLA_BAXTER_URL)%'
+        $apiKey:    '%env(BELLA_BAXTER_API_KEY)%'
 
 BellaBaxter\BaxterClient:
     arguments:
