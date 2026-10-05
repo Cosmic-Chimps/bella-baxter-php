@@ -13,7 +13,8 @@ namespace BellaBaxter;
  * Usage:
  *   $e2ee = new E2EEncryption();
  *   // Send $e2ee->publicKeyBase64 as the X-E2E-Public-Key request header.
- *   // On response: $secrets = $e2ee->decrypt($responseBodyJson);
+ *   // On response: $secrets = $e2ee->decrypt($responseBodyJson); // throws E2EEResponseException
+ *   //   when the body is not an envelope or does not decrypt (#1050) — never returns plaintext.
  */
 final class E2EEncryption
 {
@@ -103,69 +104,88 @@ final class E2EEncryption
     /**
      * Decrypt an encrypted secrets payload from the Bella Baxter API.
      *
-     * @param  string $responseBody Raw JSON string from the API response.
+     * #1050 — the body MUST be an envelope. A plain answer is refused, not returned: this helper is only
+     * meaningful after the caller presented {@see $publicKeyBase64}, and a plaintext answer to a presented
+     * key is exactly what a header-stripping intermediary or a server regression would serve.
+     *
+     * @param  string      $responseBody Raw JSON string from the API response.
+     * @param  string|null $path         Request path, named in the error message only.
      * @return array<string,string> Decrypted secrets map.
-     * @throws \RuntimeException on decryption failure.
+     * @throws E2EEResponseException e2ee-plaintext-response (not an envelope) or e2ee-decryption-failed.
      */
-    public function decrypt(string $responseBody): array
+    public function decrypt(string $responseBody, ?string $path = null): array
     {
-        $payload = json_decode($responseBody, true, 512, JSON_THROW_ON_ERROR);
+        $plaintext = $this->decryptRaw($responseBody, $path);
+        try {
+            $parsed = json_decode($plaintext, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException $e) {
+            throw E2EEResponseException::decryptionFailed($path, $e);
+        }
+        if (!is_array($parsed)) {
+            throw E2EEResponseException::decryptionFailed($path);
+        }
+        return self::secretsFromPlaintext($parsed);
+    }
 
-        if (empty($payload['encrypted'])) {
-            // Plain response — return as-is (filter to string values only)
-            return array_filter(
-                $payload,
-                static fn($v) => is_string($v)
-            );
+    /**
+     * Decrypt the raw plaintext JSON string of an encrypted payload.
+     *
+     * Unlike {@see decrypt()} this returns the full decrypted JSON string without
+     * any transformation, so the caller can handle the response shape itself
+     * (preserving version, environmentSlug, lastModified, etc.).
+     *
+     * #1050 — a body that is not an envelope is REFUSED (it used to be returned as-is), and so is an
+     * envelope that does not decrypt: malformed, tampered (the GCM tag fails) or encrypted to another key.
+     *
+     * @param  string      $responseBody Raw JSON string of the encrypted API response.
+     * @param  string|null $path         Request path, named in the error message only.
+     * @return string Decrypted plaintext JSON string.
+     * @throws E2EEResponseException e2ee-plaintext-response (not an envelope) or e2ee-decryption-failed.
+     */
+    public function decryptRaw(string $responseBody, ?string $path = null): string
+    {
+        $payload = self::envelopeOf($responseBody);
+        if ($payload === null) {
+            throw E2EEResponseException::plaintext($path);
         }
 
-        $serverPubBytes = base64_decode($payload['serverPublicKey'], true);
-        $nonce          = base64_decode($payload['nonce'],           true);
-        $tag            = base64_decode($payload['tag'],             true);
-        $ciphertext     = base64_decode($payload['ciphertext'],      true);
-
-        if ($serverPubBytes === false || $nonce === false || $tag === false || $ciphertext === false) {
-            throw new \RuntimeException('E2EEncryption: failed to base64-decode payload fields');
+        try {
+            return $this->open($payload);
+        } catch (\Throwable $e) {
+            throw E2EEResponseException::decryptionFailed($path, $e);
         }
+    }
 
-        // 1. Import server ephemeral public key (SPKI DER → PEM)
-        $serverPubPem = self::derToPem($serverPubBytes, 'PUBLIC KEY');
-        $serverPubKey = openssl_pkey_get_public($serverPubPem);
-        if ($serverPubKey === false) {
-            throw new \RuntimeException('E2EEncryption: failed to import server public key: ' . openssl_error_string());
+    /**
+     * The body as an envelope (`"encrypted": true`, a JSON object), or null when it is anything else:
+     * not JSON, not an object, or an object without `"encrypted": true` — i.e. plain secrets.
+     *
+     * @return array<string,mixed>|null
+     */
+    public static function envelopeOf(string $responseBody): ?array
+    {
+        try {
+            $payload = json_decode($responseBody, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return null;
         }
-
-        // 2. ECDH → raw shared secret
-        // openssl_pkey_derive() is the correct ECDH function (PHP 8.1+)
-        $sharedSecret = openssl_pkey_derive($serverPubKey, $this->privateKey);
-        if ($sharedSecret === false) {
-            throw new \RuntimeException('E2EEncryption: ECDH failed: ' . openssl_error_string());
+        if (!is_array($payload) || array_is_list($payload) || ($payload['encrypted'] ?? null) !== true) {
+            return null;
         }
+        return $payload;
+    }
 
-        // 3. HKDF-SHA256 → 32-byte AES key (salt = 32 zero bytes per RFC 5869 §2.2)
-        $salt   = str_repeat("\x00", 32);
-        $aesKey = self::hkdfSha256($sharedSecret, $salt, self::HKDF_INFO, 32);
-
-        // 4. AES-256-GCM decrypt
-        $plaintext = openssl_decrypt(
-            $ciphertext,
-            'aes-256-gcm',
-            $aesKey,
-            OPENSSL_RAW_DATA,
-            $nonce,
-            $tag,
-        );
-
-        if ($plaintext === false) {
-            throw new \RuntimeException('E2EEncryption: AES-GCM decryption failed: ' . openssl_error_string());
-        }
-
-        $parsed = json_decode($plaintext, true, 512, JSON_THROW_ON_ERROR);
-
-        // Three possible server response shapes:
-        //   1. Full AllEnvironmentSecretsResponse: {"environmentSlug":..., "secrets":{...}, ...}
-        //   2. Array of SecretItem:                [{key:"K", value:"V"}, ...]
-        //   3. Legacy flat dict:                   {"K": "V", ...}
+    /**
+     * The secrets map inside a decrypted plaintext. Three possible server response shapes:
+     *   1. Full AllEnvironmentSecretsResponse: {"environmentSlug":..., "secrets":{...}, ...}
+     *   2. Array of SecretItem:                [{key:"K", value:"V"}, ...]
+     *   3. Legacy flat dict:                   {"K": "V", ...}
+     *
+     * @param  array<mixed> $parsed
+     * @return array<string,string>
+     */
+    public static function secretsFromPlaintext(array $parsed): array
+    {
         if (isset($parsed['secrets']) && is_array($parsed['secrets']) && !array_is_list($parsed['secrets'])) {
             // Full response — extract nested secrets dict.
             return array_map('strval', $parsed['secrets']);
@@ -174,7 +194,7 @@ final class E2EEncryption
         if (array_is_list($parsed)) {
             $result = [];
             foreach ($parsed as $item) {
-                if (isset($item['key'])) {
+                if (is_array($item) && isset($item['key'])) {
                     $result[$item['key']] = (string) ($item['value'] ?? '');
                 }
             }
@@ -186,47 +206,42 @@ final class E2EEncryption
     }
 
     /**
-     * Decrypt the raw plaintext JSON string of an encrypted payload.
+     * ECDH (P-256) → HKDF-SHA256 → AES-256-GCM. Throws on any failure; never returns the input.
      *
-     * Unlike {@see decrypt()} this returns the full decrypted JSON string without
-     * any transformation, so the caller can handle the response shape itself
-     * (preserving version, environmentSlug, lastModified, etc.).
-     *
-     * @param  string $responseBody Raw JSON string of the encrypted API response.
-     * @return string Decrypted plaintext JSON string.
-     * @throws \RuntimeException on decryption failure or unencrypted input.
+     * @param array<string,mixed> $payload An envelope from {@see envelopeOf()}.
      */
-    public function decryptRaw(string $responseBody): string
+    private function open(array $payload): string
     {
-        $payload = json_decode($responseBody, true, 512, JSON_THROW_ON_ERROR);
+        $field = static function (string $name) use ($payload): string {
+            $value = $payload[$name] ?? null;
+            $bytes = is_string($value) ? base64_decode($value, true) : false;
+            if ($bytes === false || $bytes === '') {
+                throw new \RuntimeException("E2EEncryption: envelope field '{$name}' is missing or not base64");
+            }
+            return $bytes;
+        };
+        $serverPubBytes = $field('serverPublicKey');
+        $nonce          = $field('nonce');
+        $tag            = $field('tag');
+        $ciphertext     = $field('ciphertext');
 
-        if (empty($payload['encrypted'])) {
-            return $responseBody;
-        }
-
-        $serverPubBytes = base64_decode($payload['serverPublicKey'], true);
-        $nonce          = base64_decode($payload['nonce'],           true);
-        $tag            = base64_decode($payload['tag'],             true);
-        $ciphertext     = base64_decode($payload['ciphertext'],      true);
-
-        if ($serverPubBytes === false || $nonce === false || $tag === false || $ciphertext === false) {
-            throw new \RuntimeException('E2EEncryption: failed to base64-decode payload fields');
-        }
-
-        $serverPubPem = self::derToPem($serverPubBytes, 'PUBLIC KEY');
-        $serverPubKey = openssl_pkey_get_public($serverPubPem);
+        // 1. Import server ephemeral public key (SPKI DER → PEM)
+        $serverPubKey = openssl_pkey_get_public(self::derToPem($serverPubBytes, 'PUBLIC KEY'));
         if ($serverPubKey === false) {
             throw new \RuntimeException('E2EEncryption: failed to import server public key: ' . openssl_error_string());
         }
 
+        // 2. ECDH → raw shared secret (openssl_pkey_derive is the ECDH function, PHP 8.1+)
         $sharedSecret = openssl_pkey_derive($serverPubKey, $this->privateKey);
         if ($sharedSecret === false) {
             throw new \RuntimeException('E2EEncryption: ECDH failed: ' . openssl_error_string());
         }
-        $salt      = str_repeat("\x00", 32);
-        $aesKey    = self::hkdfSha256($sharedSecret, $salt, self::HKDF_INFO, 32);
-        $plaintext = openssl_decrypt($ciphertext, 'aes-256-gcm', $aesKey, OPENSSL_RAW_DATA, $nonce, $tag);
 
+        // 3. HKDF-SHA256 → 32-byte AES key (salt = 32 zero bytes per RFC 5869 §2.2)
+        $aesKey = self::hkdfSha256($sharedSecret, str_repeat("\x00", 32), self::HKDF_INFO, 32);
+
+        // 4. AES-256-GCM decrypt — false when the tag fails (tampered, or encrypted to another key)
+        $plaintext = openssl_decrypt($ciphertext, 'aes-256-gcm', $aesKey, OPENSSL_RAW_DATA, $nonce, $tag);
         if ($plaintext === false) {
             throw new \RuntimeException('E2EEncryption: AES-GCM decryption failed: ' . openssl_error_string());
         }

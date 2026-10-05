@@ -42,6 +42,12 @@ When `enableE2ee: true` is set:
 
 Secret values are **never visible in plaintext** — not in server logs, proxies, or network captures.
 
+**Fail closed (#1050).** Once the key has been presented on a read that carries secret values, an answer
+that is not a decryptable envelope is refused with `BellaBaxter\E2EEResponseException`, never returned:
+`getErrorCode()` is `e2ee-plaintext-response` for plain secrets (a header-stripping proxy or a server
+regression) and `e2ee-decryption-failed` for an envelope that is malformed, tampered or encrypted to
+another key. There is no plaintext fallback.
+
 ```php
 // E2EE is opt-in — disabled by default
 $clientWithE2ee = new BaxterClient(new BaxterClientOptions(
