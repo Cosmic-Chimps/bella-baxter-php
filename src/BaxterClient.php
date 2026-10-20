@@ -193,8 +193,8 @@ final class BaxterClient
      *     ->sendPrimitiveAsync($info, StreamInterface::class)->wait(), true);
      * ```
      *
-     * Five of the seven value-carrying reads are declared as `E2EEncryptedPayload` in the OpenAPI document,
-     * so their typed `get()` cannot describe the decrypted answer; the raw body here is that answer (#1162).
+     * Each of the seven value-carrying reads declares the PLAINTEXT it returns in the OpenAPI document (#1187),
+     * so the typed `get()` describes the decrypted answer; the raw body here is that same answer (#1162).
      */
     public function getRequestAdapter(): GuzzleRequestAdapter
     {

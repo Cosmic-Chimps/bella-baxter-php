@@ -107,9 +107,9 @@ echo $ctx['projectSlug'] . '/' . $ctx['environmentSlug'];
 ### `getClient()` and `getRequestAdapter()` — the full API
 
 `getClient()` is the Kiota-generated client for every other endpoint; its requests go through the same
-signing and E2EE middleware. Five of the seven value-carrying reads are declared as `E2EEncryptedPayload` in
-the OpenAPI document, which is not the shape they decrypt to, so read those through `getRequestAdapter()`
-as a raw body:
+signing and E2EE middleware. Each of the seven value-carrying reads declares the plaintext it returns in
+the OpenAPI document (#1187), so the typed `get()` parses the decrypted answer; `getRequestAdapter()` reads the
+same answer as a raw body:
 
 ```php
 use Psr\Http\Message\StreamInterface;
