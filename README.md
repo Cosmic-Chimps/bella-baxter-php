@@ -56,12 +56,12 @@ use BellaBaxter\BaxterClient;
 use BellaBaxter\BaxterClientOptions;
 use BellaBaxter\E2EEResponseException;
 
-// ZKE: present a registered device key instead of an ephemeral one.
+// Present a registered device key instead of an ephemeral one.
 $client = new BaxterClient(new BaxterClientOptions(
     apiKey:     getenv('BELLA_BAXTER_API_KEY'),
     privateKey: getenv('BELLA_BAXTER_PRIVATE_KEY') ?: null, // PKCS#8 PEM; this env var is also read automatically
     onWrappedDekReceived: function (string $wrappedDek, ?string $leaseExpires): void {
-        // ZKE key wrapping: persist the wrapped DEK for offline use
+        // Device key wrapping: persist the wrapped DEK for offline use
     },
 ));
 
@@ -134,7 +134,7 @@ echo $item['value'];
 | `baxterUrl` | `string` | `https://api.bella-baxter.io` | Base URL of the Baxter API |
 | `apiKey` | `string` | — (required) | Bella Baxter API key, `bax-<keyId>-<secret>` |
 | `timeoutSeconds` | `int` | `10` | HTTP request timeout |
-| `privateKey` | `?string` | `null` | PKCS#8 PEM device key (ZKE); falls back to `BELLA_BAXTER_PRIVATE_KEY` |
+| `privateKey` | `?string` | `null` | PKCS#8 PEM device key; falls back to `BELLA_BAXTER_PRIVATE_KEY` |
 | `onWrappedDekReceived` | `?callable` | `null` | `(string $wrappedDek, ?string $leaseExpires): void`, called on `X-Bella-Wrapped-Dek` |
 
 ## Laravel Integration
